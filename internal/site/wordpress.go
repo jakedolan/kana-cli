@@ -126,28 +126,74 @@ func (s *Site) getMounts(appDir string) ([]mount.Mount, error) {
 
 	if s.Settings.Type == "plugin" {
 
-		if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, "wordpress", "wp-content", "plugins", s.Settings.Name), 0750); err != nil {
+		/**
+		 * Create the directory inside the root directory mounted. This is necessary due to mounting a volume that is 
+		 * a subdirectory in another volume. If the directory does not exist, one is created by the user running
+		 * the docker container which is root:root instead of the local user.
+		 */
+		 if err := os.MkdirAll(path.Join(appDir, "wp-content", "plugins", s.Settings.Name), 0750); err != nil {
 			return appVolumes, err
 		}
 
-		appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a plugin
-			Type:   mount.TypeBind,
-			Source: s.Settings.WorkingDirectory,
-			Target: path.Join("/var/www/html", "wp-content", "plugins", s.Settings.Name),
-		})
+		/**
+		 * --directory by default is the root directory of the kana site.
+		 * example: `kana start --plugin --directory=wordpress/wp-content/plugins`
+		 */
+		if (s.Settings.Directory != ".") {
+			// Creates the custom mounted subdirectory if specified and does not yet exist.
+			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name), 0750); err != nil {
+				return appVolumes, err
+			}
+			// Mount the custom directory as the volume.
+			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a plugin
+				Type:   mount.TypeBind,
+				Source: path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),
+				Target: path.Join("/var/www/html/wp-content/plugins", s.Settings.Name),
+			})
+		} else {
+			// Mount the root site directory as the volume.
+			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a plugin
+				Type:   mount.TypeBind,
+				Source: path.Join(s.Settings.WorkingDirectory),
+				Target: path.Join("/var/www/html/wp-content/plugins", s.Settings.Name),
+			})
+		}
 	}
 
 	if s.Settings.Type == "theme" {
-
-		if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, "wordpress", "wp-content", "themes", s.Settings.Name), 0750); err != nil {
+		/**
+		 * Create the directory inside the root directory mounted. This is necessary due to mounting a volume that is 
+		 * a subdirectory in another volume. If the directory does not exist, one is created by the user running
+		 * the docker container which is root:root instead of the local user.
+		 */
+		if err := os.MkdirAll(path.Join(appDir, "wp-content", "themes", s.Settings.Name), 0750); err != nil {
 			return appVolumes, err
 		}
 
-		appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a theme
-			Type:   mount.TypeBind,
-			Source: s.Settings.WorkingDirectory,
-			Target: path.Join("/var/www/html", "wp-content", "themes", s.Settings.Name),
-		})
+		/**
+		 * --directory by default is the root directory of the kana site.
+		 * example: `kana start --theme --directory=wordpress/wp-content/themes`
+		 */
+		if (s.Settings.Directory != ".") {
+			// Creates the custom mounted subdirectory if specified and does not yet exist.
+			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name), 0750); err != nil {
+				return appVolumes, err
+			}
+			// Mount the custom directory as the volume.
+			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a theme
+				Type:   mount.TypeBind,
+				Source: path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),
+				Target: path.Join("/var/www/html/wp-content/themes", s.Settings.Name),
+			})
+		} else {
+			// Mount the root site directory as the volume.
+			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a theme
+				Type:   mount.TypeBind,
+				Source: path.Join(s.Settings.WorkingDirectory),
+				Target: path.Join("/var/www/html/wp-content/themes", s.Settings.Name),
+			})
+		}
+		
 	}
 
 	return appVolumes, nil
