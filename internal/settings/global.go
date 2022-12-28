@@ -23,6 +23,7 @@ func (s *Settings) LoadGlobalSettings() error {
 	s.AdminUsername = globalViperConfig.GetString("admin.username")
 	s.PHP = globalViperConfig.GetString("php")
 	s.Type = globalViperConfig.GetString("type")
+	s.Directory = globalViperConfig.GetString("directory")
 
 	return err
 }
@@ -37,6 +38,7 @@ func (s *Settings) loadGlobalViper() (*viper.Viper, error) {
 	globalSettings.SetDefault("type", siteType)
 	globalSettings.SetDefault("local", local)
 	globalSettings.SetDefault("php", php)
+	globalSettings.SetDefault("directory", directory)
 	globalSettings.SetDefault("admin.username", adminUsername)
 	globalSettings.SetDefault("admin.password", adminPassword)
 	globalSettings.SetDefault("admin.email", adminEmail)

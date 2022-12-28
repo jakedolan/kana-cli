@@ -136,6 +136,7 @@ func (s *Site) PrintSiteSettings() {
 	fmt.Printf("SecureURL: %s\n", s.Settings.SecureURL)
 	fmt.Printf("URL: %s\n", s.Settings.URL)
 	fmt.Printf("Type: %s\n", s.Settings.Type)
+	fmt.Printf("Directory: %s\n", s.Settings.Directory)
 
 	for _, plugin := range s.Settings.Plugins {
 		fmt.Printf("Plugin: %s\n", plugin)
@@ -221,6 +222,7 @@ func (s *Site) getRunningConfig(withPlugins bool) (settings.LocalSettings, error
 		Local:      false,
 		Xdebug:     false,
 		PhpMyAdmin: false,
+		Directory:  ".",
 	}
 
 	// We need container details to see if the phpmyadmin container is running
@@ -254,6 +256,11 @@ func (s *Site) getRunningConfig(withPlugins bool) (settings.LocalSettings, error
 
 		if mount.Source == path.Join(s.Settings.WorkingDirectory, "wordpress") {
 			localSettings.Local = true
+		}
+
+		// Allow customizing mounted directory if a custom directory is specified.
+		if mount.Source == path.Join(s.Settings.WorkingDirectory, s.Settings.Directory) {
+			localSettings.Directory = s.Settings.Directory
 		}
 
 		if strings.Contains(mount.Destination, "/var/www/html/wp-content/plugins/") {

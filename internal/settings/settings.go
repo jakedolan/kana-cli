@@ -21,6 +21,7 @@ var (
 	xdebug           = false
 	phpmyadmin       = false
 	local            = false
+	directory        = "."
 	adminUsername    = "admin"
 	adminPassword    = "password"
 	adminEmail       = "admin@sites.kana.li"
@@ -38,6 +39,7 @@ type Settings struct {
 	SecureURL, URL                                string
 	Type                                          string
 	Plugins                                       []string
+	Directory                                     string
 	global                                        *viper.Viper
 	local                                         *viper.Viper
 }

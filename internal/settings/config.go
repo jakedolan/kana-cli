@@ -38,6 +38,7 @@ func (s *Settings) ListSettings() {
 	t.AddRow("type", console.Bold(s.global.GetString("type")), console.Bold(s.local.GetString("type")))
 	t.AddRow("xdebug", console.Bold(s.global.GetString("xdebug")), console.Bold(s.local.GetString("xdebug")))
 	t.AddRow("phpmyadmin", console.Bold(s.global.GetString("phpmyadmin")), console.Bold(s.local.GetString("phpmyadmin")))
+	t.AddRow("directory", console.Bold(s.global.GetString("directory")), console.Bold(s.local.GetString("directory")))
 
 	boldPlugins := []string{}
 
@@ -81,7 +82,9 @@ func (s *Settings) SetGlobalSetting(md *cobra.Command, args []string) error {
 	case "type":
 		if !isValidString(args[1], validTypes) {
 			err = fmt.Errorf("please choose a valid project type")
-		}
+		}	
+	case "directory":
+		err = validate.Var(args[1], "dir")
 	case "admin.email":
 		err = validate.Var(args[1], "email")
 	case "admin.password":

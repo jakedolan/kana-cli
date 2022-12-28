@@ -11,17 +11,19 @@ import (
 )
 
 type StartFlags struct {
-	Xdebug     bool
-	PhpMyAdmin bool
-	Local      bool
-	IsTheme    bool
-	IsPlugin   bool
+	Xdebug     	bool
+	PhpMyAdmin 	bool
+	Local      	bool
+	IsTheme    	bool
+	IsPlugin   	bool
+	Directory   string
 }
 
 type LocalSettings struct {
 	Local, PhpMyAdmin, Xdebug bool
 	Type                      string
 	Plugins                   []string
+	Directory                 string
 }
 
 // LoadLocalSettings Loads the config for the current site being called
@@ -55,6 +57,7 @@ func (s *Settings) LoadLocalSettings(cmd *cobra.Command) (bool, error) {
 	s.PHP = localViper.GetString("php")
 	s.Type = localViper.GetString("type")
 	s.Plugins = localViper.GetStringSlice("plugins")
+	s.Directory = localViper.GetString("directory")
 
 	return isSite, nil
 }
@@ -148,6 +151,10 @@ func (s *Settings) ProcessStartFlags(cmd *cobra.Command, flags StartFlags) {
 	if cmd.Flags().Lookup("theme").Changed && flags.IsTheme {
 		s.Type = "theme"
 	}
+
+	if (cmd.Flags().Lookup("directory").Changed) {
+		s.Directory = flags.Directory
+	}
 }
 
 // WriteLocalSettings Writes all appropriate local settings to the local config file
@@ -158,6 +165,7 @@ func (s *Settings) WriteLocalSettings(localSettings LocalSettings) error {
 	s.local.Set("xdebug", localSettings.Xdebug)
 	s.local.Set("phpmyadmin", localSettings.PhpMyAdmin)
 	s.local.Set("plugins", localSettings.Plugins)
+	s.local.Set("directory", localSettings.Directory)
 
 	if _, err := os.Stat(path.Join(s.WorkingDirectory, ".kana.json")); os.IsNotExist(err) {
 		return s.local.SafeWriteConfig()
@@ -177,6 +185,7 @@ func (s *Settings) loadlocalViper() (*viper.Viper, error) {
 	localSettings.SetDefault("xdebug", s.Xdebug)
 	localSettings.SetDefault("phpmyadmin", s.PhpMyAdmin)
 	localSettings.SetDefault("plugins", []string{})
+	localSettings.SetDefault("directory", s.Directory)
 
 	localSettings.SetConfigName(".kana")
 	localSettings.SetConfigType("json")

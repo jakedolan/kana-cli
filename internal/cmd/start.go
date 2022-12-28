@@ -46,6 +46,7 @@ func newStartCommand(kanaSite *site.Site) *cobra.Command {
 	cmd.Flags().BoolVarP(&startFlags.IsPlugin, "plugin", "p", false, "Run the site as a plugin using the current folder as the plugin source.")
 	cmd.Flags().BoolVarP(&startFlags.IsTheme, "theme", "t", false, "Run the site as a theme using the current folder as the theme source.")
 	cmd.Flags().BoolVarP(&startFlags.Local, "local", "l", false, "Installs the WordPress files in your current path at ./wordpress instead of the global app path.")
+	cmd.Flags().StringVarP(&startFlags.Directory, "directory", "d", ".", "Customize the location of the source directory.")
 
 	return cmd
 }
