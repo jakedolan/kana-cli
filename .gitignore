@@ -48,8 +48,10 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# Ignore .vscode build files
-.vscode/*.log
+# Ignore .vscode specific files
+.history
+.vscode
+*.code-workspace
 
 # Ignore Go vendor assets
 vendor/
