@@ -375,6 +375,40 @@ func (s *Site) startWordPress() error {
 
 	if s.Settings.PhpMyAdmin {
 
+
+		/** 
+		 * In testing the config.secret.inc.php file is not being created from the phpmyadmin image and causing a fatal php error. This works
+		 * around that issue by creating, if it does not exist, a local config.secret.inc.php and mounts it into the container.  This ensures you
+		 * can customize the phpmyadmin config as needed on a pers site basis too.
+		 */
+		// Ensure config/phpmyadmin/site exists.
+		configDirectory := path.Join(s.Settings.AppDirectory, "config", "phpmyadmin", s.Settings.Name)
+		secretFilePath := path.Join(configDirectory, "config.secret.inc.php")
+		userFilePath := path.Join(configDirectory, "config.user.inc.php")
+		if err := os.MkdirAll(configDirectory, 0750); err != nil {
+			return err
+		}
+
+		// create the config.secret.inc.php
+		secretFileName, err := os.OpenFile(secretFilePath, os.O_RDWR|os.O_CREATE, 0640)
+		if err != nil {
+			return err
+		}
+		if err := secretFileName.Close(); err != nil {
+			return err
+		}
+
+		// create the config.user.inc.php
+		userFileName, err := os.OpenFile(userFilePath, os.O_RDWR|os.O_CREATE, 0640)
+		if err != nil {
+			return err
+		}
+		if err := userFileName.Close(); err != nil {
+			return err
+		}
+		userFileName.Close()
+	
+
 		phpMyAdminContainer := docker.ContainerConfig{
 			Name:        fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
 			Image:       "phpmyadmin",
@@ -382,7 +416,6 @@ func (s *Site) startWordPress() error {
 			HostName:    fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
 			Env: []string{
 				"MYSQL_ROOT_PASSWORD=password",
-				//"PMA_ARBITRARY=1",
 				fmt.Sprintf("PMA_HOST=kana_%s_database", s.Settings.Name),
 				"PMA_USER=wordpress",
 				"PMA_PASSWORD=wordpress",
@@ -393,7 +426,17 @@ func (s *Site) startWordPress() error {
 					Source: databaseDir,
 					Target: "/var/lib/mysql",
 				},
-			},
+				{ // Maps a file to config.secret.inc.php
+					Type:   mount.TypeBind,
+					Source: secretFilePath,
+					Target: "/etc/phpmyadmin/config.secret.inc.php",
+				},
+				{ // Maps a file to config.user.inc.php
+					Type:   mount.TypeBind,
+					Source: path.Join(configDirectory, "config.user.inc.php"),
+					Target: "/etc/phpmyadmin/config.user.inc.php",
+			 },				
+			},	
 			Labels: map[string]string{
 				"traefik.enable": "true",
 				fmt.Sprintf("traefik.http.routers.wordpress-%s-%s-http.entrypoints", s.Settings.Name, "phpmyadmin"): "web",
@@ -404,8 +447,14 @@ func (s *Site) startWordPress() error {
 				"kana.site": s.Settings.Name,
 			},
 		}
-
+		
+		if (err != nil) {
+			return err
+		}
+		
 		wordPressContainers = append(wordPressContainers, phpMyAdminContainer)
+		
+		console.Println(fmt.Sprintf("Starting phpMyAdmin site: https://%s-%s/\n", "phpmyadmin", s.Settings.SiteDomain))
 	}
 
 	for _, container := range wordPressContainers {
