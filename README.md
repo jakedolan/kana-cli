@@ -53,7 +53,7 @@ Assuming you have Go properly setup with GOBIN in your system path, you should n
 
 At it's most basic you can start a zero-config Kana site by running `kana start` in your terminal. This will create a new Kana site based on your current directory name and open it in your default browser. If it is the first time you've run Kana it will also install it's root CA in your Mac's system store.
 
-**For non-Mac users** You will need to install you the root CA manually. See the following blog [How to import CA root certificates on Linux and Windows](https://thomas-leister.de/en/how-to-import-ca-root-certificate/). You may also manually install the `kana/certs/kana.root.pem` in your preferred browser.
+**For non-Mac users** You will need to install the root CA manually. See the following blog [How to import CA root certificates on Linux and Windows](https://thomas-leister.de/en/how-to-import-ca-root-certificate/). You may also manually install the `kana/certs/kana.root.pem` in your preferred browser.
 
 Kana relies on [Traefik](https://traefik.io) to map real domains to local sites. You can run as many sites as you need and each will be mapped to a subdomain of _sites.kana.li_.
 
