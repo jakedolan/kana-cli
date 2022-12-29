@@ -21,6 +21,7 @@ type PluginInfo struct {
 }
 
 var defaultDirPermissions = 0750
+var defaultFilePermissions = 0640
 
 // RunWPCli Runs a wp-cli command returning it's output and any errors
 func (s *Site) RunWPCli(command []string) (statusCode int64, output string, err error) {
@@ -117,7 +118,7 @@ func (s *Site) getMounts(appDir string) ([]mount.Mount, error) {
 			Type:   mount.TypeBind,
 			Source: s.Settings.SiteDirectory,
 			Target: "/Site",
-		},
+		}, 
 	}
 
 	if s.Settings.Type == "plugin" {
@@ -127,7 +128,7 @@ func (s *Site) getMounts(appDir string) ([]mount.Mount, error) {
 		 * a subdirectory in another volume. If the directory does not exist, one is created by the user running
 		 * the docker container which is root:root instead of the local user.
 		 */
-		 if err := os.MkdirAll(path.Join(appDir, "wp-content", "plugins", s.Settings.Name), 0750); err != nil {
+		 if err := os.MkdirAll(path.Join(appDir, "wp-content", "plugins", s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
 			return appVolumes, err
 		}
 
@@ -137,7 +138,7 @@ func (s *Site) getMounts(appDir string) ([]mount.Mount, error) {
 		 */
 		if (s.Settings.Directory != ".") {
 			// Creates the custom mounted subdirectory if specified and does not yet exist.
-			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name), 0750); err != nil {
+			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
 				return appVolumes, err
 			}
 			// Mount the custom directory as the volume.
@@ -162,7 +163,7 @@ func (s *Site) getMounts(appDir string) ([]mount.Mount, error) {
 		 * a subdirectory in another volume. If the directory does not exist, one is created by the user running
 		 * the docker container which is root:root instead of the local user.
 		 */
-		if err := os.MkdirAll(path.Join(appDir, "wp-content", "themes", s.Settings.Name), 0750); err != nil {
+		if err := os.MkdirAll(path.Join(appDir, "wp-content", "themes", s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
 			return appVolumes, err
 		}
 
@@ -172,7 +173,7 @@ func (s *Site) getMounts(appDir string) ([]mount.Mount, error) {
 		 */
 		if (s.Settings.Directory != ".") {
 			// Creates the custom mounted subdirectory if specified and does not yet exist.
-			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name), 0750); err != nil {
+			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
 				return appVolumes, err
 			}
 			// Mount the custom directory as the volume.
@@ -336,7 +337,7 @@ func (s *Site) startWordPress() error {
 					Type:   mount.TypeBind,
 					Source: databaseDir,
 					Target: "/var/lib/mysql",
-				},
+				}, 
 			},
 		},
 		{
@@ -363,7 +364,12 @@ func (s *Site) startWordPress() error {
 		},
 	}
 
-	wordPressContainers = s.getPhpMyAdminContainer(databaseDir, wordPressContainers)
+	wordPressContainers, err = s.getPhpMyAdminContainer(databaseDir, wordPressContainers)
+	if (err != nil) {
+		return err
+	}
+
+
 
 	for i := range wordPressContainers {
 		err := s.dockerClient.EnsureImage(wordPressContainers[i].Image)
@@ -375,7 +381,7 @@ func (s *Site) startWordPress() error {
 			return err
 		}
 	}
-
+ 
 	return nil
 }
 
@@ -393,8 +399,8 @@ func (s *Site) stopWordPress() error {
 	return nil
 }
 
-func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []docker.ContainerConfig) []docker.ContainerConfig {
-	if s.Settings.PhpMyAdmin {
+func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []docker.ContainerConfig) ([]docker.ContainerConfig, error) {
+	if s.Settings.PhpMyAdmin { 
 
 
 		/** 
@@ -406,26 +412,26 @@ func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []
 		configDirectory := path.Join(s.Settings.AppDirectory, "config", "phpmyadmin", s.Settings.Name)
 		secretFilePath := path.Join(configDirectory, "config.secret.inc.php")
 		userFilePath := path.Join(configDirectory, "config.user.inc.php")
-		if err := os.MkdirAll(configDirectory, 0750); err != nil {
-			return err
+		if err := os.MkdirAll(configDirectory, os.FileMode(defaultDirPermissions)); err != nil {
+			return wordPressContainers, err
 		}
 
 		// create the config.secret.inc.php
-		secretFileName, err := os.OpenFile(secretFilePath, os.O_RDWR|os.O_CREATE, 0640)
+		secretFileName, err := os.OpenFile(secretFilePath, os.O_RDWR|os.O_CREATE, os.FileMode(defaultFilePermissions))
 		if err != nil {
-			return err
+			return wordPressContainers, err
 		}
 		if err := secretFileName.Close(); err != nil {
-			return err
+			return wordPressContainers, err
 		}
 
 		// create the config.user.inc.php
-		userFileName, err := os.OpenFile(userFilePath, os.O_RDWR|os.O_CREATE, 0640)
+		userFileName, err := os.OpenFile(userFilePath, os.O_RDWR|os.O_CREATE, os.FileMode(defaultFilePermissions))
 		if err != nil {
-			return err
+			return wordPressContainers, err
 		}
 		if err := userFileName.Close(); err != nil {
-			return err
+			return wordPressContainers, err
 		}
 		userFileName.Close()
 	
@@ -481,14 +487,11 @@ func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []
 			},
 		}
 		
-		if (err != nil) {
-			return err
-		}
 		
 		wordPressContainers = append(wordPressContainers, phpMyAdminContainer)
 		
 		console.Println(fmt.Sprintf("Starting phpMyAdmin site: https://%s-%s/\n", "phpmyadmin", s.Settings.SiteDomain))
 	}
 
-	return wordPressContainers
+	return wordPressContainers, nil
 }
