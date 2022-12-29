@@ -118,79 +118,53 @@ func (s *Site) getMounts(appDir string) ([]mount.Mount, error) {
 			Type:   mount.TypeBind,
 			Source: s.Settings.SiteDirectory,
 			Target: "/Site",
-		}, 
+		},
 	}
 
-	if s.Settings.Type == "plugin" {
-
-		/**
-		 * Create the directory inside the root directory mounted. This is necessary due to mounting a volume that is 
-		 * a subdirectory in another volume. If the directory does not exist, one is created by the user running
-		 * the docker container which is root:root instead of the local user.
-		 */
-		 if err := os.MkdirAll(path.Join(appDir, "wp-content", "plugins", s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
-			return appVolumes, err
+	if s.Settings.Type != "site" {
+		dirName := ""
+		if s.Settings.Type == "plugin" {
+			dirName = "plugins"
+		}
+		if s.Settings.Type == "theme" {
+			dirName = "themes"
 		}
 
-		/**
-		 * --directory by default is the root directory of the kana site.
-		 * example: `kana start --plugin --directory=wordpress/wp-content/plugins`
-		 */
-		if (s.Settings.Directory != ".") {
-			// Creates the custom mounted subdirectory if specified and does not yet exist.
-			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
+		if dirName != "" {
+			/**
+			* Create the directory inside the root directory mounted. This is necessary due to mounting a volume that is
+			* a subdirectory in another volume. If the directory does not exist, one is created by the user running
+			* the docker container which is root:root instead of the local user.
+			 */
+			if err := os.MkdirAll(path.Join(appDir, "wp-content", dirName, s.Settings.Name), os.FileMode(defaultDirPermissions)); err != nil {
 				return appVolumes, err
 			}
-			// Mount the custom directory as the volume.
-			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a plugin
-				Type:   mount.TypeBind,
-				Source: path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),
-				Target: path.Join("/var/www/html/wp-content/plugins", s.Settings.Name),
-			})
-		} else {
-			// Mount the root site directory as the volume.
-			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a plugin
-				Type:   mount.TypeBind,
-				Source: path.Join(s.Settings.WorkingDirectory),
-				Target: path.Join("/var/www/html/wp-content/plugins", s.Settings.Name),
-			})
-		}
-	}
 
-	if s.Settings.Type == "theme" {
-		/**
-		 * Create the directory inside the root directory mounted. This is necessary due to mounting a volume that is 
-		 * a subdirectory in another volume. If the directory does not exist, one is created by the user running
-		 * the docker container which is root:root instead of the local user.
-		 */
-		if err := os.MkdirAll(path.Join(appDir, "wp-content", "themes", s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
-			return appVolumes, err
-		}
-
-		/**
-		 * --directory by default is the root directory of the kana site.
-		 * example: `kana start --theme --directory=wordpress/wp-content/themes`
-		 */
-		if (s.Settings.Directory != ".") {
-			// Creates the custom mounted subdirectory if specified and does not yet exist.
-			if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),  os.FileMode(defaultDirPermissions)); err != nil {
-				return appVolumes, err
+			/**
+			* --directory by default is the root directory of the kana site.
+			* example: `kana start --[plugin,theme] --directory=wordpress/wp-content/[plugins,themes]`
+			 */
+			if s.Settings.Directory != "." {
+				// Creates the custom mounted subdirectory if specified and does not yet exist.
+				if err := os.MkdirAll(path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),
+					os.FileMode(defaultDirPermissions)); err != nil {
+					return appVolumes, err
+				}
+				// Mount the custom directory as the volume.
+				appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a plugin
+					Type:   mount.TypeBind,
+					Source: path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),
+					Target: path.Join(fmt.Sprintf("/var/www/html/wp-content/%s", dirName), s.Settings.Name),
+				})
+			} else {
+				// Mount the root site directory as the volume.
+				appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a plugin
+					Type:   mount.TypeBind,
+					Source: path.Join(s.Settings.WorkingDirectory),
+					Target: path.Join(fmt.Sprintf("/var/www/html/wp-content/%s", dirName), s.Settings.Name),
+				})
 			}
-			// Mount the custom directory as the volume.
-			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a theme
-				Type:   mount.TypeBind,
-				Source: path.Join(s.Settings.WorkingDirectory, s.Settings.Directory, s.Settings.Name),
-				Target: path.Join("/var/www/html/wp-content/themes", s.Settings.Name),
-			})
-		} else {
-			// Mount the root site directory as the volume.
-			appVolumes = append(appVolumes, mount.Mount{ // Map's the user's working directory as a theme
-				Type:   mount.TypeBind,
-				Source: path.Join(s.Settings.WorkingDirectory),
-				Target: path.Join("/var/www/html/wp-content/themes", s.Settings.Name),
-			})
 		}
-		
 	}
 
 	return appVolumes, nil
@@ -314,6 +288,27 @@ func (s *Site) startWordPress() error {
 		return err
 	}
 
+	wordPressContainers, err := s.buildSiteContainers(databaseDir, appVolumes)
+	if err != nil {
+		return err
+	}
+
+	for i := range wordPressContainers {
+		err := s.dockerClient.EnsureImage(wordPressContainers[i].Image)
+		if err != nil {
+			return err
+		}
+		_, err = s.dockerClient.ContainerRun(&wordPressContainers[i], true, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Site) buildSiteContainers(databaseDir string, appVolumes []mount.Mount) ([]docker.ContainerConfig, error) {
+	// build the wordpress containers
 	wordPressContainers := []docker.ContainerConfig{
 		{
 			Name:        fmt.Sprintf("kana_%s_database", s.Settings.Name),
@@ -337,7 +332,7 @@ func (s *Site) startWordPress() error {
 					Type:   mount.TypeBind,
 					Source: databaseDir,
 					Target: "/var/lib/mysql",
-				}, 
+				},
 			},
 		},
 		{
@@ -364,25 +359,13 @@ func (s *Site) startWordPress() error {
 		},
 	}
 
-	wordPressContainers, err = s.getPhpMyAdminContainer(databaseDir, wordPressContainers)
-	if (err != nil) {
-		return err
+	// add phpMyAdminContainer if specified
+	siteContainers, err := s.getPhpMyAdminContainer(databaseDir, wordPressContainers)
+	if err != nil {
+		return wordPressContainers, err
 	}
 
-
-
-	for i := range wordPressContainers {
-		err := s.dockerClient.EnsureImage(wordPressContainers[i].Image)
-		if err != nil {
-			return err
-		}
-		_, err = s.dockerClient.ContainerRun(&wordPressContainers[i], true, true)
-		if err != nil {
-			return err
-		}
-	}
- 
-	return nil
+	return siteContainers, nil
 }
 
 // stopWordPress Stops the site in docker, destroying the containers when they close
@@ -400,14 +383,13 @@ func (s *Site) stopWordPress() error {
 }
 
 func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []docker.ContainerConfig) ([]docker.ContainerConfig, error) {
-	if s.Settings.PhpMyAdmin { 
-
-
-		/** 
+	if s.Settings.PhpMyAdmin {
+		/**
 		 * In testing the config.secret.inc.php file is not being created from the phpmyadmin image and causing a fatal php error. This works
 		 * around that issue by creating, if it does not exist, a local config.secret.inc.php and mounts it into the container.  This ensures you
 		 * can customize the phpmyadmin config as needed on a pers site basis too.
 		 */
+
 		// Ensure config/phpmyadmin/site exists.
 		configDirectory := path.Join(s.Settings.AppDirectory, "config", "phpmyadmin", s.Settings.Name)
 		secretFilePath := path.Join(configDirectory, "config.secret.inc.php")
@@ -421,8 +403,8 @@ func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []
 		if err != nil {
 			return wordPressContainers, err
 		}
-		if err := secretFileName.Close(); err != nil {
-			return wordPressContainers, err
+		if err2 := secretFileName.Close(); err2 != nil {
+			return wordPressContainers, err2
 		}
 
 		// create the config.user.inc.php
@@ -430,11 +412,10 @@ func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []
 		if err != nil {
 			return wordPressContainers, err
 		}
-		if err := userFileName.Close(); err != nil {
-			return wordPressContainers, err
+		if err2 := userFileName.Close(); err2 != nil {
+			return wordPressContainers, err2
 		}
 		userFileName.Close()
-	
 
 		phpMyAdminContainer := docker.ContainerConfig{
 			Name:        fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
@@ -462,8 +443,8 @@ func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []
 					Type:   mount.TypeBind,
 					Source: path.Join(configDirectory, "config.user.inc.php"),
 					Target: "/etc/phpmyadmin/config.user.inc.php",
-			 },				
-			},	
+				},
+			},
 			Labels: map[string]string{
 				"traefik.enable": "true",
 				fmt.Sprintf("traefik.http.routers.wordpress-%s-%s-http.entrypoints", s.Settings.Name, "phpmyadmin"): "web",
@@ -486,10 +467,9 @@ func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []
 				"kana.site": s.Settings.Name,
 			},
 		}
-		
-		
+
 		wordPressContainers = append(wordPressContainers, phpMyAdminContainer)
-		
+
 		console.Println(fmt.Sprintf("Starting phpMyAdmin site: https://%s-%s/\n", "phpmyadmin", s.Settings.SiteDomain))
 	}
 

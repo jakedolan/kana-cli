@@ -11,12 +11,12 @@ import (
 )
 
 type StartFlags struct {
-	Xdebug     	bool
-	PhpMyAdmin 	bool
-	Local      	bool
-	IsTheme    	bool
-	IsPlugin   	bool
-	Directory   string
+	Xdebug     bool
+	PhpMyAdmin bool
+	Local      bool
+	IsTheme    bool
+	IsPlugin   bool
+	Directory  string
 }
 
 type LocalSettings struct {
@@ -150,7 +150,7 @@ func (s *Settings) ProcessStartFlags(cmd *cobra.Command, flags StartFlags) {
 		s.Type = "theme"
 	}
 
-	if (cmd.Flags().Lookup("directory").Changed) {
+	if cmd.Flags().Lookup("directory").Changed {
 		s.Directory = flags.Directory
 	}
 }

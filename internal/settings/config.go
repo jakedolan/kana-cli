@@ -82,7 +82,7 @@ func (s *Settings) SetGlobalSetting(md *cobra.Command, args []string) error {
 	case "type":
 		if !isValidString(args[1], validTypes) {
 			err = fmt.Errorf("please choose a valid project type")
-		}	
+		}
 	case "directory":
 		err = validate.Var(args[1], "dir")
 	case "admin.email":
