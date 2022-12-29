@@ -28,9 +28,6 @@ type LocalSettings struct {
 
 // LoadLocalSettings Loads the config for the current site being called
 func (s *Settings) LoadLocalSettings(cmd *cobra.Command) (bool, error) {
-
-	isSite := false // Don't assume we're in a site that has been initialized.
-
 	siteName := sanitizeSiteName(filepath.Base(s.WorkingDirectory))
 	// Setup other options generated from config items
 	s.SiteDomain = fmt.Sprintf("%s.%s", siteName, s.AppDomain)
@@ -64,7 +61,6 @@ func (s *Settings) LoadLocalSettings(cmd *cobra.Command) (bool, error) {
 
 // ProcessNameFlag Processes the name flag on the site resetting all appropriate local variables
 func (s *Settings) ProcessNameFlag(cmd *cobra.Command) (bool, error) {
-
 	isSite := false // Don't assume we're in a site that has been initialized.
 
 	// Don't run this on commands that wouldn't possibly use it.
@@ -77,7 +73,6 @@ func (s *Settings) ProcessNameFlag(cmd *cobra.Command) (bool, error) {
 
 	// Process the name flag if set
 	if cmd.Flags().Lookup("name").Changed {
-
 		// Check that we're not using invalid start flags for the start command
 		if cmd.Use == "start" {
 			if cmd.Flags().Lookup("plugin").Changed || cmd.Flags().Lookup("theme").Changed || cmd.Flags().Lookup("local").Changed {
@@ -100,6 +95,10 @@ func (s *Settings) ProcessNameFlag(cmd *cobra.Command) (bool, error) {
 		isSite = true
 	}
 
+	return s.saveLinkConfig(isSite, cmd, siteLink)
+}
+
+func (s *Settings) saveLinkConfig(isSite bool, cmd *cobra.Command, siteLink string) (bool, error) {
 	siteLinkConfig := viper.New()
 
 	siteLinkConfig.SetDefault("link", siteLink)
@@ -108,12 +107,12 @@ func (s *Settings) ProcessNameFlag(cmd *cobra.Command) (bool, error) {
 	siteLinkConfig.SetConfigType("json")
 	siteLinkConfig.AddConfigPath(s.SiteDirectory)
 
-	err = siteLinkConfig.ReadInConfig()
+	err := siteLinkConfig.ReadInConfig()
 	if err != nil {
 		_, ok := err.(viper.ConfigFileNotFoundError)
 		if ok && cmd.Use == "start" {
 			isSite = true
-			err = os.MkdirAll(s.SiteDirectory, 0750)
+			err = os.MkdirAll(s.SiteDirectory, os.FileMode(defaultDirPermissions))
 			if err != nil {
 				return isSite, err
 			}
@@ -131,7 +130,6 @@ func (s *Settings) ProcessNameFlag(cmd *cobra.Command) (bool, error) {
 
 // ProcessStartFlags Process the start flags and save them to the settings object
 func (s *Settings) ProcessStartFlags(cmd *cobra.Command, flags StartFlags) {
-
 	if cmd.Flags().Lookup("local").Changed {
 		s.Local = flags.Local
 	}
@@ -159,7 +157,6 @@ func (s *Settings) ProcessStartFlags(cmd *cobra.Command, flags StartFlags) {
 
 // WriteLocalSettings Writes all appropriate local settings to the local config file
 func (s *Settings) WriteLocalSettings(localSettings LocalSettings) error {
-
 	s.local.Set("local", localSettings.Local)
 	s.local.Set("type", localSettings.Type)
 	s.local.Set("xdebug", localSettings.Xdebug)
@@ -176,7 +173,6 @@ func (s *Settings) WriteLocalSettings(localSettings LocalSettings) error {
 
 // loadSiteConfig Get the config items that can be overridden locally with a .kana.json file.
 func (s *Settings) loadlocalViper() (*viper.Viper, error) {
-
 	localSettings := viper.New()
 
 	localSettings.SetDefault("php", s.PHP)
