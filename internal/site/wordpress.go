@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 )
 
-type ContainerRunInstruction struct {
+type ContainerInfo struct {
 	containerConfig docker.ContainerConfig
 	localUser       bool
 }
@@ -26,7 +26,6 @@ type PluginInfo struct {
 }
 
 var defaultDirPermissions = 0750
-var defaultFilePermissions = 0640
 
 // RunWPCli Runs a wp-cli command returning it's output and any errors
 func (s *Site) RunWPCli(command []string) (statusCode int64, output string, err error) {
@@ -293,10 +292,7 @@ func (s *Site) startWordPress() error {
 		return err
 	}
 
-	wordPressContainers, err := s.buildSiteContainers(databaseDir, appVolumes)
-	if err != nil {
-		return err
-	}
+	wordPressContainers := s.buildSiteContainers(databaseDir, appVolumes)
 
 	for i := range wordPressContainers {
 		err := s.dockerClient.EnsureImage(wordPressContainers[i].containerConfig.Image)
@@ -312,9 +308,9 @@ func (s *Site) startWordPress() error {
 	return nil
 }
 
-func (s *Site) buildSiteContainers(databaseDir string, appVolumes []mount.Mount) ([]ContainerRunInstruction, error) {
+func (s *Site) buildSiteContainers(databaseDir string, appVolumes []mount.Mount) []ContainerInfo {
 	// build the wordpress containers
-	wordPressContainers := []ContainerRunInstruction{
+	wordPressContainers := []ContainerInfo{
 		{
 			localUser: true,
 			containerConfig: docker.ContainerConfig{
@@ -371,12 +367,9 @@ func (s *Site) buildSiteContainers(databaseDir string, appVolumes []mount.Mount)
 	}
 
 	// add phpMyAdminContainer if specified
-	siteContainers, err := s.getPhpMyAdminContainer(databaseDir, wordPressContainers)
-	if err != nil {
-		return wordPressContainers, err
-	}
+	siteContainers := s.getPhpMyAdminContainer(databaseDir, wordPressContainers)
 
-	return siteContainers, nil
+	return siteContainers
 }
 
 // stopWordPress Stops the site in docker, destroying the containers when they close
@@ -393,9 +386,9 @@ func (s *Site) stopWordPress() error {
 	return nil
 }
 
-func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []ContainerRunInstruction) ([]ContainerRunInstruction, error) {
+func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []ContainerInfo) []ContainerInfo {
 	if s.Settings.PhpMyAdmin {
-		phpMyAdminContainer := ContainerRunInstruction{
+		phpMyAdminContainer := ContainerInfo{
 			localUser: false,
 			containerConfig: docker.ContainerConfig{
 				Name:        fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
@@ -444,5 +437,5 @@ func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []
 		console.Println(fmt.Sprintf("Starting phpMyAdmin site: https://%s-%s/\n", "phpmyadmin", s.Settings.SiteDomain))
 	}
 
-	return wordPressContainers, nil
+	return wordPressContainers
 }
