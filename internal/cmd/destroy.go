@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path"
 
 	"github.com/ChrisWiegman/kana-cli/internal/site"
 	"github.com/ChrisWiegman/kana-cli/pkg/console"
@@ -48,12 +47,6 @@ func newDestroyCommand(kanaSite *site.Site) *cobra.Command {
 
 				// Remove the site's folder in the config directory.
 				err = os.RemoveAll(kanaSite.Settings.SiteDirectory)
-				if err != nil {
-					console.Error(err, flagVerbose)
-				}
-
-				// Remove the phpmyadmin's config folder
-				err = os.RemoveAll(path.Join(kanaSite.Settings.AppDirectory, "config", "phpmyadmin", kanaSite.Settings.Name))
 				if err != nil {
 					console.Error(err, flagVerbose)
 				}
