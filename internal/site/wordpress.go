@@ -13,6 +13,11 @@ import (
 	"github.com/docker/docker/api/types/mount"
 )
 
+type ContainerRunInstruction struct {
+	containerConfig docker.ContainerConfig
+	localUser       bool
+}
+
 type PluginInfo struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`
@@ -294,11 +299,11 @@ func (s *Site) startWordPress() error {
 	}
 
 	for i := range wordPressContainers {
-		err := s.dockerClient.EnsureImage(wordPressContainers[i].Image)
+		err := s.dockerClient.EnsureImage(wordPressContainers[i].containerConfig.Image)
 		if err != nil {
 			return err
 		}
-		_, err = s.dockerClient.ContainerRun(&wordPressContainers[i], true, true)
+		_, err = s.dockerClient.ContainerRun(&wordPressContainers[i].containerConfig, true, wordPressContainers[i].localUser)
 		if err != nil {
 			return err
 		}
@@ -307,55 +312,61 @@ func (s *Site) startWordPress() error {
 	return nil
 }
 
-func (s *Site) buildSiteContainers(databaseDir string, appVolumes []mount.Mount) ([]docker.ContainerConfig, error) {
+func (s *Site) buildSiteContainers(databaseDir string, appVolumes []mount.Mount) ([]ContainerRunInstruction, error) {
 	// build the wordpress containers
-	wordPressContainers := []docker.ContainerConfig{
+	wordPressContainers := []ContainerRunInstruction{
 		{
-			Name:        fmt.Sprintf("kana_%s_database", s.Settings.Name),
-			Image:       "mariadb",
-			NetworkName: "kana",
-			HostName:    fmt.Sprintf("kana_%s_database", s.Settings.Name),
-			Ports: []docker.ExposedPorts{
-				{Port: "3306", Protocol: "tcp"},
-			},
-			Env: []string{
-				"MARIADB_ROOT_PASSWORD=password",
-				"MARIADB_DATABASE=wordpress",
-				"MARIADB_USER=wordpress",
-				"MARIADB_PASSWORD=wordpress",
-			},
-			Labels: map[string]string{
-				"kana.site": s.Settings.Name,
-			},
-			Volumes: []mount.Mount{
-				{ // Maps a database folder to the MySQL container for persistence
-					Type:   mount.TypeBind,
-					Source: databaseDir,
-					Target: "/var/lib/mysql",
+			localUser: true,
+			containerConfig: docker.ContainerConfig{
+				Name:        fmt.Sprintf("kana_%s_database", s.Settings.Name),
+				Image:       "mariadb",
+				NetworkName: "kana",
+				HostName:    fmt.Sprintf("kana_%s_database", s.Settings.Name),
+				Ports: []docker.ExposedPorts{
+					{Port: "3306", Protocol: "tcp"},
+				},
+				Env: []string{
+					"MARIADB_ROOT_PASSWORD=password",
+					"MARIADB_DATABASE=wordpress",
+					"MARIADB_USER=wordpress",
+					"MARIADB_PASSWORD=wordpress",
+				},
+				Labels: map[string]string{
+					"kana.site": s.Settings.Name,
+				},
+				Volumes: []mount.Mount{
+					{ // Maps a database folder to the MySQL container for persistence
+						Type:   mount.TypeBind,
+						Source: databaseDir,
+						Target: "/var/lib/mysql",
+					},
 				},
 			},
 		},
 		{
-			Name:        fmt.Sprintf("kana_%s_wordpress", s.Settings.Name),
-			Image:       fmt.Sprintf("wordpress:php%s", s.Settings.PHP),
-			NetworkName: "kana",
-			HostName:    fmt.Sprintf("kana_%s_wordpress", s.Settings.Name),
-			Env: []string{
-				fmt.Sprintf("WORDPRESS_DB_HOST=kana_%s_database", s.Settings.Name),
-				"WORDPRESS_DB_USER=wordpress",
-				"WORDPRESS_DB_PASSWORD=wordpress",
-				"WORDPRESS_DB_NAME=wordpress",
+			localUser: true,
+			containerConfig: docker.ContainerConfig{
+				Name:        fmt.Sprintf("kana_%s_wordpress", s.Settings.Name),
+				Image:       fmt.Sprintf("wordpress:php%s", s.Settings.PHP),
+				NetworkName: "kana",
+				HostName:    fmt.Sprintf("kana_%s_wordpress", s.Settings.Name),
+				Env: []string{
+					fmt.Sprintf("WORDPRESS_DB_HOST=kana_%s_database", s.Settings.Name),
+					"WORDPRESS_DB_USER=wordpress",
+					"WORDPRESS_DB_PASSWORD=wordpress",
+					"WORDPRESS_DB_NAME=wordpress",
+				},
+				Labels: map[string]string{
+					"traefik.enable": "true",
+					fmt.Sprintf("traefik.http.routers.wordpress-%s-http.entrypoints", s.Settings.Name): "web",
+					fmt.Sprintf("traefik.http.routers.wordpress-%s-http.rule", s.Settings.Name):        fmt.Sprintf("Host(`%s`)", s.Settings.SiteDomain),
+					fmt.Sprintf("traefik.http.routers.wordpress-%s.entrypoints", s.Settings.Name):      "websecure",
+					fmt.Sprintf("traefik.http.routers.wordpress-%s.rule", s.Settings.Name):             fmt.Sprintf("Host(`%s`)", s.Settings.SiteDomain),
+					fmt.Sprintf("traefik.http.routers.wordpress-%s.tls", s.Settings.Name):              "true",
+					"kana.site": s.Settings.Name,
+				},
+				Volumes: appVolumes,
 			},
-			Labels: map[string]string{
-				"traefik.enable": "true",
-				fmt.Sprintf("traefik.http.routers.wordpress-%s-http.entrypoints", s.Settings.Name): "web",
-				fmt.Sprintf("traefik.http.routers.wordpress-%s-http.rule", s.Settings.Name):        fmt.Sprintf("Host(`%s`)", s.Settings.SiteDomain),
-				fmt.Sprintf("traefik.http.routers.wordpress-%s.entrypoints", s.Settings.Name):      "websecure",
-				fmt.Sprintf("traefik.http.routers.wordpress-%s.rule", s.Settings.Name):             fmt.Sprintf("Host(`%s`)", s.Settings.SiteDomain),
-				fmt.Sprintf("traefik.http.routers.wordpress-%s.tls", s.Settings.Name):              "true",
-				"kana.site": s.Settings.Name,
-			},
-			Volumes: appVolumes,
 		},
 	}
 
@@ -382,89 +393,49 @@ func (s *Site) stopWordPress() error {
 	return nil
 }
 
-func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []docker.ContainerConfig) ([]docker.ContainerConfig, error) {
+func (s *Site) getPhpMyAdminContainer(databaseDir string, wordPressContainers []ContainerRunInstruction) ([]ContainerRunInstruction, error) {
 	if s.Settings.PhpMyAdmin {
-		/**
-		 * In testing the config.secret.inc.php file is not being created from the phpmyadmin image and causing a fatal php error. This works
-		 * around that issue by creating, if it does not exist, a local config.secret.inc.php and mounts it into the container.  This ensures you
-		 * can customize the phpmyadmin config as needed on a pers site basis too.
-		 */
-
-		// Ensure config/phpmyadmin/site exists.
-		configDirectory := path.Join(s.Settings.AppDirectory, "config", "phpmyadmin", s.Settings.Name)
-		secretFilePath := path.Join(configDirectory, "config.secret.inc.php")
-		userFilePath := path.Join(configDirectory, "config.user.inc.php")
-		if err := os.MkdirAll(configDirectory, os.FileMode(defaultDirPermissions)); err != nil {
-			return wordPressContainers, err
-		}
-
-		// create the config.secret.inc.php
-		secretFileName, err := os.OpenFile(secretFilePath, os.O_RDWR|os.O_CREATE, os.FileMode(defaultFilePermissions))
-		if err != nil {
-			return wordPressContainers, err
-		}
-		if err2 := secretFileName.Close(); err2 != nil {
-			return wordPressContainers, err2
-		}
-
-		// create the config.user.inc.php
-		userFileName, err := os.OpenFile(userFilePath, os.O_RDWR|os.O_CREATE, os.FileMode(defaultFilePermissions))
-		if err != nil {
-			return wordPressContainers, err
-		}
-		if err2 := userFileName.Close(); err2 != nil {
-			return wordPressContainers, err2
-		}
-		userFileName.Close()
-
-		phpMyAdminContainer := docker.ContainerConfig{
-			Name:        fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
-			Image:       "phpmyadmin",
-			NetworkName: "kana",
-			HostName:    fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
-			Env: []string{
-				"MYSQL_ROOT_PASSWORD=password",
-				fmt.Sprintf("PMA_HOST=kana_%s_database", s.Settings.Name),
-				"PMA_USER=wordpress",
-				"PMA_PASSWORD=wordpress",
-			},
-			Volumes: []mount.Mount{
-				{ // Maps a database folder to the MySQL container for persistence
-					Type:   mount.TypeBind,
-					Source: databaseDir,
-					Target: "/var/lib/mysql",
+		phpMyAdminContainer := ContainerRunInstruction{
+			localUser: false,
+			containerConfig: docker.ContainerConfig{
+				Name:        fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
+				Image:       "phpmyadmin",
+				NetworkName: "kana",
+				HostName:    fmt.Sprintf("kana_%s_phpmyadmin", s.Settings.Name),
+				Env: []string{
+					"MYSQL_ROOT_PASSWORD=password",
+					fmt.Sprintf("PMA_HOST=kana_%s_database", s.Settings.Name),
+					"PMA_USER=wordpress",
+					"PMA_PASSWORD=wordpress",
 				},
-				{ // Maps a file to config.secret.inc.php
-					Type:   mount.TypeBind,
-					Source: secretFilePath,
-					Target: "/etc/phpmyadmin/config.secret.inc.php",
+				Volumes: []mount.Mount{
+					{ // Maps a database folder to the MySQL container for persistence
+						Type:   mount.TypeBind,
+						Source: databaseDir,
+						Target: "/var/lib/mysql",
+					},
 				},
-				{ // Maps a file to config.user.inc.php
-					Type:   mount.TypeBind,
-					Source: path.Join(configDirectory, "config.user.inc.php"),
-					Target: "/etc/phpmyadmin/config.user.inc.php",
+				Labels: map[string]string{
+					"traefik.enable": "true",
+					fmt.Sprintf("traefik.http.routers.wordpress-%s-%s-http.entrypoints", s.Settings.Name, "phpmyadmin"): "web",
+					fmt.Sprintf(
+						"traefik.http.routers.wordpress-%s-%s-http.rule",
+						s.Settings.Name,
+						"phpmyadmin"): fmt.Sprintf(
+						"Host(`%s-%s`)",
+						"phpmyadmin",
+						s.Settings.SiteDomain),
+					fmt.Sprintf("traefik.http.routers.wordpress-%s-%s.entrypoints", s.Settings.Name, "phpmyadmin"): "websecure",
+					fmt.Sprintf(
+						"traefik.http.routers.wordpress-%s-%s.rule",
+						s.Settings.Name,
+						"phpmyadmin"): fmt.Sprintf(
+						"Host(`%s-%s`)",
+						"phpmyadmin",
+						s.Settings.SiteDomain),
+					fmt.Sprintf("traefik.http.routers.wordpress-%s-%s.tls", s.Settings.Name, "phpmyadmin"): "true",
+					"kana.site": s.Settings.Name,
 				},
-			},
-			Labels: map[string]string{
-				"traefik.enable": "true",
-				fmt.Sprintf("traefik.http.routers.wordpress-%s-%s-http.entrypoints", s.Settings.Name, "phpmyadmin"): "web",
-				fmt.Sprintf(
-					"traefik.http.routers.wordpress-%s-%s-http.rule",
-					s.Settings.Name,
-					"phpmyadmin"): fmt.Sprintf(
-					"Host(`%s-%s`)",
-					"phpmyadmin",
-					s.Settings.SiteDomain),
-				fmt.Sprintf("traefik.http.routers.wordpress-%s-%s.entrypoints", s.Settings.Name, "phpmyadmin"): "websecure",
-				fmt.Sprintf(
-					"traefik.http.routers.wordpress-%s-%s.rule",
-					s.Settings.Name,
-					"phpmyadmin"): fmt.Sprintf(
-					"Host(`%s-%s`)",
-					"phpmyadmin",
-					s.Settings.SiteDomain),
-				fmt.Sprintf("traefik.http.routers.wordpress-%s-%s.tls", s.Settings.Name, "phpmyadmin"): "true",
-				"kana.site": s.Settings.Name,
 			},
 		}
 
